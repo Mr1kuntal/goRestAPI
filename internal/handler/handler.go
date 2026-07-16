@@ -22,11 +22,19 @@ func NewHandler(data *database.Usersdbstr) *Handler {
 }
 
 
+func writeError(w http.ResponseWriter, msg string,status int) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
 func (h *Handler) GetUsers(w http.ResponseWriter,r *http.Request) {
 
-	snapshot := make([]model.User,0,len(h.db.Usersdb))
+	// snapshot := make([]model.User,0,len(h.db.Usersdb))
+	// not here because i am reading len of db which is shared resource , so it should be inside lock
 
 	h.db.Mu.RLock()
+	snapshot := make([]model.User,0,len(h.db.Usersdb))
 	for _,val:= range h.db.Usersdb {
 		snapshot = append(snapshot, val)
 	}
@@ -36,6 +44,10 @@ func (h *Handler) GetUsers(w http.ResponseWriter,r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		// writeError(w, "failed to encode response", http.StatusInternalServerError)
+		// imagine you're writing a frontend or another service that calls this API. Your code probably does response.json() (or json.Unmarshal in Go) on every response, expecting JSON either way. On a 404, that call will fail or throw, because the body isn't JSON — it's just a plain string. Now every caller has to know: "if status is 2xx, parse as JSON; if it's an error, treat the body as plain text instead." That's extra branching that a well-designed API shouldn't force on its clients.
+		// The fix is to make error responses JSON too, so the shape is consistent everywhere.
+		// so use writeError when you want to send error as json data
 		return
 	}
 
